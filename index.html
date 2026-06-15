@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PDF RAG Assistant</title>
+
+<style>
+:root {
+    --primary: #2563eb;
+    --primary-dark: #1d4ed8;
+    --bg: #f4f7fb;
+    --card: #ffffff;
+    --border: #e5e7eb;
+    --text: #111827;
+    --muted: #6b7280;
+    --success: #16a34a;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: Inter, Segoe UI, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+}
+
+.container {
+    max-width: 1000px;
+    margin: 40px auto;
+    padding: 20px;
+}
+
+.header {
+    text-align: center;
+    margin-bottom: 30px;
+}
+
+.header h1 {
+    font-size: 2rem;
+    margin-bottom: 10px;
+}
+
+.header p {
+    color: var(--muted);
+}
+
+.card {
+    background: var(--card);
+    border-radius: 16px;
+    padding: 24px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.05);
+    margin-bottom: 20px;
+}
+
+.upload-area {
+    border: 2px dashed #cbd5e1;
+    border-radius: 12px;
+    padding: 40px;
+    text-align: center;
+    transition: 0.2s;
+}
+
+.upload-area:hover {
+    border-color: var(--primary);
+}
+
+.upload-area input {
+    display: none;
+}
+
+.upload-label {
+    cursor: pointer;
+}
+
+.upload-btn,
+.ask-btn {
+    background: var(--primary);
+    color: white;
+    border: none;
+    padding: 12px 22px;
+    border-radius: 10px;
+    cursor: pointer;
+    font-size: 15px;
+}
+
+.upload-btn:hover,
+.ask-btn:hover {
+    background: var(--primary-dark);
+}
+
+.status {
+    margin-top: 12px;
+    color: var(--success);
+    font-weight: 600;
+}
+
+.question-section {
+    display: flex;
+    gap: 12px;
+}
+
+.question-input {
+    flex: 1;
+    padding: 14px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    font-size: 15px;
+}
+
+.answer-box {
+    margin-top: 20px;
+    background: #fafafa;
+    border: 1px solid var(--border);
+    padding: 20px;
+    border-radius: 12px;
+    min-height: 80px;
+    white-space: pre-wrap;
+    line-height: 1.7;
+}
+
+.loading {
+    display: none;
+    margin-top: 10px;
+    color: var(--primary);
+}
+
+.sources {
+    margin-top: 20px;
+}
+
+details {
+    margin-top: 10px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px;
+}
+
+summary {
+    cursor: pointer;
+    font-weight: 600;
+}
+
+.chunk {
+    margin-top: 10px;
+    white-space: pre-wrap;
+    color: #374151;
+}
+
+.footer {
+    text-align: center;
+    color: var(--muted);
+    margin-top: 30px;
+}
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+    <div class="header">
+        <h1>📄 PDF RAG Assistant</h1>
+        <p>Upload a PDF and chat with it using Qwen 8B + RAG</p>
+    </div>
+
+    <div class="card">
+
+        <h2>Upload PDF</h2>
+
+        <div class="upload-area">
+            <label class="upload-label">
+                <input type="file" id="pdfFile" accept=".pdf">
+                <p>Select PDF</p>
+            </label>
+
+            <br><br>
+
+            <button class="upload-btn" onclick="uploadPDF()">
+                Upload Document
+            </button>
+
+            <div id="uploadStatus" class="status"></div>
+        </div>
+
+    </div>
+
+    <div class="card">
+
+        <h2>Ask Questions</h2>
+
+        <br>
+
+        <div class="question-section">
+            <input
+                id="questionInput"
+                class="question-input"
+                placeholder="Ask something about the uploaded PDF..."
+            />
+
+            <button
+                class="ask-btn"
+                onclick="askQuestion()">
+                Ask
+            </button>
+        </div>
+
+        <div id="loading" class="loading">
+            Thinking...
+        </div>
+
+        <div id="answer" class="answer-box">
+            Upload a PDF and ask a question.
+        </div>
+
+        <div id="sources" class="sources"></div>
+
+    </div>
+
+    <div class="footer">
+        Powered by FastAPI + FAISS + Qwen + vLLM
+    </div>
+
+</div>
+
+<script>
+
+const API_BASE = "http://localhost:9000";
+
+async function uploadPDF() {
+
+    const fileInput = document.getElementById("pdfFile");
+    const status = document.getElementById("uploadStatus");
+
+    if (!fileInput.files.length) {
+        alert("Please choose a PDF.");
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append("file", fileInput.files[0]);
+
+    status.innerHTML = "Uploading...";
+
+    try {
+
+        const response = await fetch(
+            `${API_BASE}/upload`,
+            {
+                method: "POST",
+                body: formData
+            }
+        );
+
+        const data = await response.json();
+
+        status.innerHTML =
+            `✅ Indexed ${data.chunks} chunks successfully`;
+
+    } catch (error) {
+
+        console.error(error);
+
+        status.innerHTML =
+            "❌ Upload failed";
+
+    }
+}
+
+async function askQuestion() {
+
+    const question =
+        document.getElementById("questionInput").value;
+
+    if (!question.trim()) {
+        return;
+    }
+
+    const answerDiv =
+        document.getElementById("answer");
+
+    const loading =
+        document.getElementById("loading");
+
+    const sourcesDiv =
+        document.getElementById("sources");
+
+    loading.style.display = "block";
+    answerDiv.innerHTML = "";
+    sourcesDiv.innerHTML = "";
+
+    try {
+
+        const response = await fetch(
+            `${API_BASE}/ask`,
+            {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    question: question
+                })
+            }
+        );
+
+        const data = await response.json();
+
+        answerDiv.textContent =
+            data.answer;
+
+        if (data.sources) {
+
+            let html =
+                "<h3>Retrieved Context</h3>";
+
+            data.sources.forEach(
+                (chunk, index) => {
+
+                html += `
+                <details>
+                    <summary>
+                        Chunk ${index + 1}
+                    </summary>
+                    <div class="chunk">
+                        ${escapeHtml(chunk)}
+                    </div>
+                </details>
+                `;
+            });
+
+            sourcesDiv.innerHTML = html;
+        }
+
+    } catch (error) {
+
+        answerDiv.innerHTML =
+            "Error while generating answer.";
+
+        console.error(error);
+    }
+
+    loading.style.display = "none";
+}
+
+function escapeHtml(text) {
+
+    const div =
+        document.createElement("div");
+
+    div.innerText = text;
+
+    return div.innerHTML;
+}
+
+document
+.getElementById("questionInput")
+.addEventListener(
+    "keydown",
+    function(event) {
+
+        if (event.key === "Enter") {
+            askQuestion();
+        }
+    }
+);
+
+</script>
+
+</body>
+</html>
