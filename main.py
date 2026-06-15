@@ -109,7 +109,7 @@ Answer:
 """
 
     response = client.chat.completions.create(
-        model="Qwen/Qwen2.5-8B-Instruct",
+        model="Qwen/Qwen3-8B",
         temperature=0,
         messages=[
             {
